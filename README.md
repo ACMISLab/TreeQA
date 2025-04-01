@@ -72,7 +72,7 @@ The core model used for generating sub-questions, hypotheses, and final answers 
     *   `openaiApiKey`: Your API key from OpenAI for using GPT models. (See: [OpenAI API Keys](https://platform.openai.com/account/api-keys))
     *   `deepseekApiKey`: Your API key from DeepSeek for using their models. (See: [DeepSeek Platform](https://platform.deepseek.com/))
 
-**4. Vector Store **(Optional)**
+**4. Vector Store (Optional)**
 
 Settings related to storing and retrieving text chunks based on embeddings.
 

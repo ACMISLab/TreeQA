@@ -4,8 +4,7 @@ import os
 import logging
 import re
 import string
-from collections import Counter
-from typing import List, Tuple, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # 日志配置
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,88 +14,65 @@ def normalize_text(s: str) -> str:
     if not s:
         return ""
     s = str(s).lower()
-    # 移除标点符号
     s = s.translate(str.maketrans('', '', string.punctuation))
-    # 移除冠词 (a, an, the)
     s = re.sub(r'\b(a|an|the)\b', ' ', s)
-    # 移除多余空格
     s = ' '.join(s.split())
     return s
 
-def calculate_f1_precision_recall(prediction: str, ground_truths: List[str]) -> Tuple[float, float, float]:
+def calculate_em_contains(prediction: str, ground_truths: List[str]) -> bool:
     """
-    计算预测与真实答案列表之间的最大 F1, Precision, Recall 分数 (基于 Token)。
-
-    Args:
-        prediction: 预测的答案字符串。
-        ground_truths: 包含一个或多个真实答案字符串的列表。
-
-    Returns:
-        一个元组 (f1, precision, recall)。
+    计算 Exact Match (EM) 分数 (包含模式)。
+    检查规范化后的预测是否包含任何一个规范化后的真实答案作为子串。
     """
     if not ground_truths:
-        return (0.0, 0.0, 0.0) if not prediction else (0.0, 0.0, 0.0) # 或者根据需要处理
+        return not normalize_text(prediction)
     if not prediction:
-        return (0.0, 0.0, 0.0) # 预测为空，无法匹配
+        return False
 
     normalized_prediction = normalize_text(prediction)
-    prediction_tokens = Counter(normalized_prediction.split())
-
-    if not prediction_tokens: # 规范化后预测为空
-         return (0.0, 0.0, 0.0)
-
-    max_f1 = 0.0
-    best_precision = 0.0
-    best_recall = 0.0
+    if not normalized_prediction:
+        return False
 
     for gt in ground_truths:
         normalized_gt = normalize_text(gt)
-        gt_tokens = Counter(normalized_gt.split())
-
-        if not gt_tokens:
-            continue # 跳过空的真实答案
-
-        common_tokens = prediction_tokens & gt_tokens
-        num_common = sum(common_tokens.values())
-
-        # Precision = (共享 Token 数) / (预测 Token 总数)
-        precision = num_common / sum(prediction_tokens.values()) if sum(prediction_tokens.values()) > 0 else 0.0
-        # Recall = (共享 Token 数) / (真实答案 Token 总数)
-        recall = num_common / sum(gt_tokens.values()) if sum(gt_tokens.values()) > 0 else 0.0
-        # F1 Score
-        f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-
-        if f1 > max_f1:
-            max_f1 = f1
-            best_precision = precision
-            best_recall = recall
-
-    return max_f1, best_precision, best_recall
-
-def calculate_em(prediction: str, ground_truths: List[str]) -> bool:
-    """
-    计算 Exact Match (EM) 分数。
-    检查规范化后的预测是否与任何一个规范化后的真实答案完全匹配。
-    """
-    if not ground_truths:
-        return not prediction # 如果真实答案为空，只有当预测也为空时才算匹配
-    if not prediction:
-        return False # 预测为空，但真实答案不为空
-
-    normalized_prediction = normalize_text(prediction)
-
-    for gt in ground_truths:
-        normalized_gt = normalize_text(gt)
-        if normalized_prediction == normalized_gt:
+        if not normalized_gt:
+            continue
+        if normalized_gt in normalized_prediction:
             return True
     return False
 
-def evaluate_results(input_file_path: str, error_file_path: str = None):
+def load_aliases(alias_file_path: str) -> Optional[Dict[str, List[str]]]:
+    """加载 JSON 格式的别名文件"""
+    # 检查路径是否存在且为文件
+    if not alias_file_path or not os.path.isfile(alias_file_path):
+        logging.error(f"提供的别名文件路径无效或不存在: {alias_file_path}")
+        return None
+    try:
+        with open(alias_file_path, 'r', encoding='utf-8') as f:
+            aliases = json.load(f)
+        # 基本类型检查，确保顶层是字典
+        if not isinstance(aliases, dict):
+             logging.error(f"别名文件顶层结构不是字典: {alias_file_path}")
+             return None
+        logging.info(f"成功从 {alias_file_path} 加载 {len(aliases)} 条别名记录")
+        return aliases
+    except json.JSONDecodeError as e:
+        logging.error(f"解析别名文件 JSON 时出错: {alias_file_path} - {e}")
+        return None
+    except Exception as e:
+        logging.error(f"加载别名文件时发生意外错误: {alias_file_path} - {e}")
+        return None
+
+# 修改函数签名，移除 dataset_name
+def evaluate_results(input_file_path: str,
+                     alias_data: Optional[Dict[str, List[str]]] = None,
+                     error_file_path: str = None):
     """
     评估 JSONL 文件中的结果。
 
     Args:
         input_file_path: 输入的 JSONL 文件路径。
+        alias_data: (可选) 已加载的别名数据字典。如果提供，则用于扩展答案列表。
         error_file_path: (可选) 保存错误记录的文件路径。
     """
     if not os.path.exists(input_file_path):
@@ -105,26 +81,20 @@ def evaluate_results(input_file_path: str, error_file_path: str = None):
 
     total_records = 0
     em_scores = []
-    f1_scores = []
-    precision_scores = []
-    recall_scores = []
 
-    # 用于计算平均值的累加器
     metric_accumulators: Dict[str, float] = {
-        "logic_init_time": 0.0,
-        "self_adaptive_time": 0.0,
-        "final_reasoning_time": 0.0,
-        "total_processing_time": 0.0,
-        "logic_init_tokens": 0.0,
-        "self_adaptive_tokens": 0.0,
-        "final_reasoning_tokens": 0.0,
-        "total_tokens": 0.0,
-        "fix_count": 0.0,
+        "logic_init_time": 0.0, "self_adaptive_time": 0.0, "final_reasoning_time": 0.0,
+        "total_processing_time": 0.0, "logic_init_tokens": 0.0, "self_adaptive_tokens": 0.0,
+        "final_reasoning_tokens": 0.0, "total_tokens": 0.0, "fix_count": 0.0,
     }
     metric_keys = list(metric_accumulators.keys())
     error_records = []
 
     logging.info(f"开始评估文件: {input_file_path}")
+    if alias_data:
+        logging.info("检测到已加载的别名数据，将使用别名进行 EM 评估。")
+    else:
+        logging.info("未提供或加载别名数据失败，EM 评估将仅使用原始答案。")
 
     with open(input_file_path, 'r', encoding='utf-8') as infile:
         for i, line in enumerate(infile):
@@ -132,19 +102,24 @@ def evaluate_results(input_file_path: str, error_file_path: str = None):
                 data = json.loads(line)
                 total_records += 1
 
-                # --- 提取信息 ---
                 record_id = data.get("id", f"line_{i+1}")
                 question = data.get("question", "")
-                # 确保 original_answer 是列表且元素为字符串
                 original_answers_raw = data.get("original_answer", [])
-                if original_answers_raw is None:
-                    original_answers = []
-                elif isinstance(original_answers_raw, list):
-                    original_answers = [str(ans) for ans in original_answers_raw if ans is not None]
-                else: # 如果不是列表，尝试将其作为单个答案处理
-                    original_answers = [str(original_answers_raw)]
+                if original_answers_raw is None: original_answers = []
+                elif isinstance(original_answers_raw, list): original_answers = [str(ans) for ans in original_answers_raw if ans is not None]
+                else: original_answers = [str(original_answers_raw)]
 
-                # 优先使用 'final_answer'，如果不存在则尝试解析 'processed_answer' 中的 'answer'
+                # --- 别名处理 (仅当 alias_data 存在时) ---
+                answers_to_match = list(original_answers) # 默认使用原始答案
+                if alias_data:
+                    extended_answers = list(original_answers)
+                    for ans in original_answers:
+                        aliases = alias_data.get(ans, [])
+                        if aliases:
+                            extended_answers.extend(aliases)
+                    answers_to_match = list(set(extended_answers)) # 使用去重后的扩展列表
+
+                # --- 提取预测答案 ---
                 prediction = data.get("final_answer")
                 if prediction is None:
                     processed_answer_str = data.get("processed_answer")
@@ -152,45 +127,35 @@ def evaluate_results(input_file_path: str, error_file_path: str = None):
                         try:
                             processed_answer_json = json.loads(processed_answer_str)
                             prediction = processed_answer_json.get("answer")
-                        except json.JSONDecodeError:
-                            prediction = None # 如果解析失败，则预测为空
-                    elif isinstance(processed_answer_str, dict): # 如果已经是dict
-                         prediction = processed_answer_str.get("answer")
+                        except json.JSONDecodeError: prediction = None
+                    elif isinstance(processed_answer_str, dict): prediction = processed_answer_str.get("answer")
 
+                if prediction is None: prediction = ""
+                else: prediction = str(prediction)
 
-                if prediction is None:
-                    prediction = "" # 保证 prediction 是字符串
-                else:
-                    prediction = str(prediction) # 确保是字符串
-
-                # --- 计算分数 ---
-                em = calculate_em(prediction, original_answers)
-                f1, precision, recall = calculate_f1_precision_recall(prediction, original_answers)
-
+                # --- 计算 EM (使用 answers_to_match) ---
+                em = calculate_em_contains(prediction, answers_to_match)
                 em_scores.append(em)
-                f1_scores.append(f1)
-                precision_scores.append(precision)
-                recall_scores.append(recall)
 
                 # --- 累加指标 ---
                 for key in metric_keys:
-                    value = data.get(key, 0) # 如果指标不存在，默认为 0
-                    if isinstance(value, (int, float)):
-                        metric_accumulators[key] += value
-                    else:
-                         logging.warning(f"记录 {record_id} 的指标 '{key}' 不是数值类型: {value} (类型: {type(value)})，计为 0")
-
+                    value = data.get(key, 0)
+                    if isinstance(value, (int, float)): metric_accumulators[key] += value
+                    else: logging.warning(f"记录 {record_id} 指标 '{key}' 非数值: {value} (类型: {type(value)})，计为 0")
 
                 # --- 记录错误 ---
                 if not em and error_file_path:
-                    error_records.append({
+                    error_entry = {
                         "id": record_id,
                         "question": question,
                         "original_answer": original_answers,
                         "predicted_answer": prediction,
-                        "f1": f1, # 也记录下 F1 分数
                         "fix_count": data.get("fix_count", "N/A")
-                    })
+                    }
+                    # 只有在实际使用了别名时才记录扩展答案列表，更清晰
+                    if alias_data and answers_to_match != original_answers:
+                         error_entry["answers_used_for_match (incl. aliases)"] = answers_to_match
+                    error_records.append(error_entry)
 
             except json.JSONDecodeError as e:
                 logging.error(f"解析第 {i+1} 行 JSON 时出错: {e}")
@@ -203,23 +168,15 @@ def evaluate_results(input_file_path: str, error_file_path: str = None):
 
     # --- 计算平均值 ---
     avg_em = sum(em_scores) / total_records
-    avg_f1 = sum(f1_scores) / total_records
-    avg_precision = sum(precision_scores) / total_records
-    avg_recall = sum(recall_scores) / total_records
-
-    average_metrics: Dict[str, float] = {}
-    for key in metric_keys:
-        average_metrics[f"avg_{key}"] = metric_accumulators[key] / total_records
+    average_metrics: Dict[str, float] = {f"avg_{key}": metric_accumulators[key] / total_records for key in metric_keys}
 
     # --- 打印报告 ---
     print("\n--- 评估结果报告 ---")
     print(f"处理总记录数: {total_records}")
+    print(f"评估模式: {'使用了提供的别名文件' if alias_data else '未使用别名文件'}")
     print("-" * 20)
     print("性能指标:")
-    print(f"  平均 Exact Match (EM): {avg_em:.4f} ({avg_em:.2%})")
-    print(f"  平均 F1 Score:         {avg_f1:.4f}")
-    print(f"  平均 Precision:        {avg_precision:.4f}")
-    print(f"  平均 Recall:           {avg_recall:.4f}")
+    print(f"  平均 Exact Match: {avg_em:.4f} ({avg_em:.2%})")
     print("-" * 20)
     print("平均资源消耗:")
     print(f"  平均 Logic Init Time:        {average_metrics['avg_logic_init_time']:.4f} s")
@@ -238,7 +195,6 @@ def evaluate_results(input_file_path: str, error_file_path: str = None):
     # --- 保存错误记录 ---
     if error_file_path and error_records:
         try:
-            # 推断输出目录并创建
             error_dir = os.path.dirname(error_file_path)
             if error_dir and not os.path.exists(error_dir):
                 os.makedirs(error_dir)
@@ -255,11 +211,26 @@ def evaluate_results(input_file_path: str, error_file_path: str = None):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="评估 QA 模型生成的 JSONL 结果文件。")
+    parser = argparse.ArgumentParser(description="评估 QA 模型生成的 JSONL 结果文件 (EM 包含模式)。根据是否提供别名文件决定是否使用别名。")
     parser.add_argument("--input_file", type=str, help="需要评估的 JSONL 结果文件路径。")
+    # 移除 --dataset_name 参数
+    # --alias_file 保持可选
+    parser.add_argument("--alias_file", type=str, default=None,
+                        help="(可选) 别名文件的路径 (JSON 格式)。如果提供且有效，将用于 EM 评估。")
     parser.add_argument("--error_file", type=str, default=None,
-                        help="(可选) 用于保存评估错误记录的 JSONL 文件路径。如果未提供，则不保存错误记录。")
+                        help="(可选) 用于保存评估错误记录的 JSONL 文件路径。")
 
     args = parser.parse_args()
 
-    evaluate_results(args.input_file, args.error_file)
+    # 移除 dataset_name 和 alias_file 的关联检查
+
+    # 加载别名数据 (仅当提供了 --alias_file 参数时)
+    alias_data = None
+    if args.alias_file: # 检查用户是否提供了这个参数
+        alias_data = load_aliases(args.alias_file)
+        # 如果加载失败，alias_data 会是 None，后续逻辑会自动处理
+        if alias_data is None:
+             logging.warning(f"无法从 {args.alias_file} 加载别名数据，评估将不使用别名。")
+
+    # 调用评估函数，移除 dataset_name 参数
+    evaluate_results(args.input_file, alias_data, args.error_file)

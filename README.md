@@ -59,7 +59,7 @@ Used for retrieving relevant text chunks (from Wikipedia articles).
 *   `RetrieveModelName`: Specifies the embedding model used for retrieval.
     *   Set to `'nv-embed-v2'` to use an NVIDIA embedding model endpoint.
     *   Set to `'text-embedding-3-small'` (or similar) if using OpenAI's embedding API (requires corresponding code integration).
-*   `nv_embed_v2_url`: The URL endpoint for the NVIDIA embedding service (if `RetrieveModelName` is set accordingly).
+*   `nv_embed_v2_url`: The URL endpoint for the NVIDIA embedding service (You can use embedding/nv_embed_server.py to start the Nvdia embedding service.).
 
 **3. Language Model (LLM)**
 

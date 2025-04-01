@@ -55,7 +55,7 @@ def get_qwen14b_ali(prompt, query):
     )
 
     completion = client.chat.completions.create(
-        model="qwen2.5-14b-instruct",  # 此处以 deepseek-r1 为例，可按需更换模型名称。
+        model="qwen2.5-14b-instruct",  
         messages=[
             {'role': 'system', 'content': prompt},
             {'role': 'user', 'content': query}
@@ -71,10 +71,7 @@ def get_qwen14b_ali(prompt, query):
 
 
 def get_gpt_response(prompt,query):
-    client = OpenAI(
-          base_url="https://api.gptsapi.net/v1",
-         api_key="sk-yUA2cc6412572324b528da0a02dc4799f505305ce24PWEjr"
-    )
+    client = OpenAI()
     completion = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -94,7 +91,7 @@ def get_gpt_response(prompt,query):
     return completion.choices[0].message.content,currentTokenCount
 
 model_functions = {
-    "deepseekV3": get_DeepSeek_Response,
+    "deepseekV3-chat": get_DeepSeek_Response,
     "qwen2.5-instruct-14b": get_qwen14b_ali,
     "deepseekV3_ali": get_deepseekV3,
     "gpt3.5-turbo":get_gpt_response

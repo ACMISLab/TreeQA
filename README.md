@@ -5,11 +5,7 @@ Code for paper TreeQA.
 ## Features
 
 *   Processes complex questions by decomposing them into a logical tree structure.
-*   Supports multiple standard QA datasets (WebQSP, QALD-EN, 2WikiMultihopQA, AdvHotpotQA, Musique).
 *   Configurable components for Entity Linking (Azure, Relik), Embedding (NVIDIA, OpenAI), and Language Models (DeepSeek, Qwen, GPT).
-*   Multithreaded dataset processing for faster inference.
-*   Generates detailed JSONL output including reasoning steps, timings, and token counts.
-*   Includes an evaluation script to calculate Exact Match (EM) scores and average resource consumption metrics.
 *   Supports using alias lists (e.g., for WebQSP) during evaluation for more robust EM calculation.
 
 ## Prerequisites
@@ -20,7 +16,7 @@ Code for paper TreeQA.
 
 1.  **Clone the repository:**
     ```bash
-    git clone <your-repository-url> # Replace with your actual repository URL
+    git clone https://github.com/Ruiio/TreeQA.git
     cd TreeQA
     ```
 
@@ -76,7 +72,7 @@ The core model used for generating sub-questions, hypotheses, and final answers 
     *   `openaiApiKey`: Your API key from OpenAI for using GPT models. (See: [OpenAI API Keys](https://platform.openai.com/account/api-keys))
     *   `deepseekApiKey`: Your API key from DeepSeek for using their models. (See: [DeepSeek Platform](https://platform.deepseek.com/))
 
-**4. Vector Store (for Retrieval)**
+**4. Vector Store **(Optional)**
 
 Settings related to storing and retrieving text chunks based on embeddings.
 
@@ -127,10 +123,10 @@ Evaluates a JSONL result file, calculating EM (containment) and average metrics.
 
 **Command:**
 ```bash
-python evaluate.py <INPUT_FILE.jsonl> [--alias_file <ALIAS_FILE.json>] [--error_file <ERROR_FILE.jsonl>]
+python evaluate.py --input_file <INPUT_FILE.jsonl> [--alias_file <ALIAS_FILE.json>] [--error_file <ERROR_FILE.jsonl>]
 ```
 **Parameters:**
-*   `<INPUT_FILE.jsonl>`: **(Required)** Path to the inference results file.
+*   `--input_file <INPUT_FILE.jsonl>`: **(Required)** Path to the inference results file.
 *   `--alias_file <ALIAS_FILE.json>`: **(Optional)** Path to a JSON alias file. If provided and valid, aliases are used for EM calculation.
 *   `--error_file <ERROR_FILE.jsonl>`: **(Optional)** Path to save records where EM=0.
 

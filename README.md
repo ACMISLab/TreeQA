@@ -100,7 +100,7 @@ This script runs the main QA process using the Logic Tree. It has two modes: `si
 
 **Command:**
 ```bash
-python inference.py single --question "Your question text here?"
+python inference.py single --question "Who is Jackie Chan's wife"
 ```
 **Parameters:**
 *   `single`: Mode specifier.

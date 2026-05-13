@@ -40,7 +40,7 @@ def answerQuestion(query):
 
         # 2. Check and Refine (Self-Adaptive)
         start_time_refine = time.perf_counter()
-        logic_tree.check_and_refine_paralle(max_workers=4)
+        logic_tree.check_and_refine_parallel(max_workers=4)
         end_time_refine = time.perf_counter()
         self_adaptive_time = end_time_refine - start_time_refine
         self_adaptive_tokens = logic_tree.tokenCount - logic_init_tokens

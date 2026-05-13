@@ -10,7 +10,7 @@ Code for paper TreeQA.
 
 ## Prerequisites
 
-*   Python (>= 3.10 recommended)
+*   Python (>= 3.11 recommended)
 
 ## Installation / Setup
 
